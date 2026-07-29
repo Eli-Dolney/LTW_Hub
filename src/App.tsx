@@ -117,8 +117,17 @@ function App() {
     setToast("Project created. Add source media when you’re ready.");
   };
 
+  const currentHour = new Date().getHours();
+  const greeting =
+    currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
+  const currentDate = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+
   const title = {
-    dashboard: "Good morning, Eli",
+    dashboard: greeting,
     projects: "Projects",
     tools: "Your tools",
     queue: "Processing queue",
@@ -131,7 +140,7 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <div className="eyebrow">{view === "dashboard" ? "Wednesday, July 29" : "LTW Hub"}</div>
+            <div className="eyebrow">{view === "dashboard" ? currentDate : "LTW Hub"}</div>
             <h1>{title}</h1>
           </div>
           <div className="topbar-actions">
@@ -259,10 +268,10 @@ function Sidebar({
         <span>Settings</span>
       </button>
       <button className="profile">
-        <span className="avatar">ED</span>
+        <span className="avatar">LTW</span>
         <span>
-          <strong>Eli Dolney</strong>
-          <small>Local workspace</small>
+          <strong>LTW Hub</strong>
+          <small>This computer</small>
         </span>
         <MoreHorizontal size={18} />
       </button>

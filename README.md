@@ -4,6 +4,20 @@
 
 Everything is designed to stay on your machine. Hub does not upload media, require an account, or enable cloud sync.
 
+## What is included
+
+This repository contains only the LTW Hub source code and app artwork. It does **not** contain anyone's media, projects, model downloads, credentials, environment files, or private folders.
+
+The creator tools remain separate applications. Install whichever ones you want Hub to launch:
+
+- [LTW Downloader](https://github.com/Eli-Dolney/LTW_Downloader)
+- [LTW Clipper](https://github.com/Eli-Dolney/LTW_Clipper)
+- [LTW Audio Splitter](https://github.com/Eli-Dolney/LTW_Audio_Spiltter)
+- [LTW EzEdit](https://github.com/Eli-Dolney/LTW_EzEdit)
+- [LTW Voice / TTS](https://github.com/Eli-Dolney/TTS)
+
+Clone the tools into one parent folder, then choose that parent folder in **Settings → Tools folder**. Each tool has its own dependencies and setup instructions.
+
 ## MVP features
 
 - Polished dashboard for recent projects, active jobs, and quick launches
@@ -76,7 +90,7 @@ Without configuration, Hub checks these parent folders:
 ~/Documents
 ```
 
-Hub recognizes both repository names and the folders in Eli's current setup:
+Hub recognizes the public repository names as well as these legacy folder names:
 
 ```text
 ~/Desktop/Python Scripts/LTW_Downloader
@@ -87,6 +101,8 @@ Hub recognizes both repository names and the folders in Eli's current setup:
 ```
 
 You can choose a different parent folder under **Settings → Tools folder**.
+
+Hub stores preferences and its sample project state in the operating system's local app storage. That data is created separately for each person and is never committed to this repository.
 
 ## Current architecture
 
@@ -118,4 +134,4 @@ The interface is React + TypeScript + Vite. Tauri uses the operating system's na
 
 ## License
 
-Add the license you want to use before publishing a release.
+[MIT](LICENSE)
