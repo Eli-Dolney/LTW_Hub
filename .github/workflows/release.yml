@@ -1,0 +1,60 @@
+name: Build downloadable apps
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macOS
+            args: --target universal-apple-darwin --bundles dmg
+          - os: windows-latest
+            label: Windows
+            args: --bundles nsis
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add universal macOS targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish downloads
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "LTW Hub v__VERSION__"
+          releaseBody: |
+            Download LTW Hub for your computer below.
+
+            These early builds are unsigned. On macOS, right-click the app and choose Open the first time. On Windows, choose More info → Run anyway if SmartScreen appears.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  AlertTriangle,
   AudioLines,
   Bell,
   Blocks,
@@ -20,27 +21,38 @@ import {
   Image,
   Layers3,
   ListVideo,
+  LoaderCircle,
   MoreHorizontal,
+  PackageCheck,
   Play,
   Plus,
   RefreshCw,
   Rocket,
+  RotateCcw,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Video,
   WandSparkles,
+  Wrench,
   X,
   Zap,
 } from "lucide-react";
 import { INITIAL_TOOLS, SEED_PROJECTS, SEED_QUEUE } from "./data";
 import { useLocalStorage } from "./hooks/useLocalStorage";
-import { desktopApi } from "./platform";
+import {
+  desktopApi,
+  type SetupAction,
+  type SetupProgress,
+  type SetupSnapshot,
+} from "./platform";
 import type { Project, Tool, View } from "./types";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "dashboard", label: "Home", icon: Home },
+  { id: "setup", label: "Setup", icon: PackageCheck },
   { id: "projects", label: "Projects", icon: Folder },
   { id: "tools", label: "Tools", icon: Blocks },
   { id: "queue", label: "Queue", icon: ListVideo },
@@ -62,6 +74,10 @@ function App() {
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
+  const [setup, setSetup] = useState<SetupSnapshot | null>(null);
+  const [setupProgress, setSetupProgress] = useState<SetupProgress | null>(null);
+  const [setupBusy, setSetupBusy] = useState<string | null>(null);
+  const [hasChosenInitialView, setHasChosenInitialView] = useState(false);
 
   const detectTools = async () => {
     if (!desktopApi.isAvailable) return;
@@ -74,11 +90,35 @@ function App() {
     );
   };
 
+  const refreshSetup = async () => {
+    try {
+      const snapshot = await desktopApi.setupSnapshot(toolsRoot || undefined);
+      setSetup(snapshot);
+      if (!hasChosenInitialView) {
+        if (snapshot.tools.every((tool) => !tool.installed)) {
+          setView("setup");
+        }
+        setHasChosenInitialView(true);
+      }
+    } catch (error) {
+      setToast(String(error));
+    }
+  };
+
   useEffect(() => {
     detectTools();
+    refreshSetup();
     // Desktop tool availability is refreshed when the root changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolsRoot]);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    desktopApi.onSetupProgress(setSetupProgress).then((cleanup) => {
+      unsubscribe = cleanup;
+    });
+    return () => unsubscribe?.();
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -98,6 +138,63 @@ function App() {
     }
     const selected = await desktopApi.chooseToolsRoot();
     if (selected) setToolsRoot(selected);
+  };
+
+  const manageTool = async (id: string, action: SetupAction) => {
+    setSetupBusy(id);
+    setSetupProgress({
+      toolId: id,
+      action,
+      stage: "starting",
+      message: "Starting setup…",
+      percent: 2,
+    });
+    try {
+      const result = await desktopApi.manageTool(id, action, toolsRoot || undefined);
+      setToast(result.message);
+      await Promise.all([refreshSetup(), detectTools()]);
+    } catch (error) {
+      setToast(String(error));
+    } finally {
+      setSetupBusy(null);
+    }
+  };
+
+  const installSelectedTools = async (ids: string[]) => {
+    for (const id of ids) {
+      setSetupBusy(id);
+      setSetupProgress({
+        toolId: id,
+        action: "install",
+        stage: "starting",
+        message: "Starting setup…",
+        percent: 2,
+      });
+      try {
+        await desktopApi.manageTool(id, "install", toolsRoot || undefined);
+      } catch (error) {
+        setToast(`${id}: ${String(error)}`);
+        setSetupBusy(null);
+        await refreshSetup();
+        return;
+      }
+    }
+    setSetupBusy(null);
+    setToast("Selected LTW tools are installed and ready.");
+    await Promise.all([refreshSetup(), detectTools()]);
+  };
+
+  const installRequirement = async (id: string) => {
+    setSetupBusy(`requirement:${id}`);
+    try {
+      const result = await desktopApi.installRequirement(id);
+      setToast(result.message);
+      await refreshSetup();
+    } catch (error) {
+      setToast(String(error));
+    } finally {
+      setSetupBusy(null);
+    }
   };
 
   const addProject = (title: string, type: Project["type"]) => {
@@ -128,6 +225,7 @@ function App() {
 
   const title = {
     dashboard: greeting,
+    setup: "Setup manager",
     projects: "Projects",
     tools: "Your tools",
     queue: "Processing queue",
@@ -172,6 +270,19 @@ function App() {
             onNavigate={setView}
             onNewProject={() => setProjectModalOpen(true)}
             onLaunch={launchTool}
+          />
+        )}
+        {view === "setup" && (
+          <SetupManagerView
+            snapshot={setup}
+            tools={tools}
+            busyId={setupBusy}
+            progress={setupProgress}
+            onChooseRoot={chooseToolsRoot}
+            onRefresh={refreshSetup}
+            onManage={manageTool}
+            onInstallSelected={installSelectedTools}
+            onInstallRequirement={installRequirement}
           />
         )}
         {view === "projects" && (
@@ -594,6 +705,256 @@ function StatCard({
       <span className={`stat-icon ${color}`}><Icon size={19} /></span>
       <div><strong>{value}</strong><span>{label}</span></div>
     </article>
+  );
+}
+
+function SetupManagerView({
+  snapshot,
+  tools,
+  busyId,
+  progress,
+  onChooseRoot,
+  onRefresh,
+  onManage,
+  onInstallSelected,
+  onInstallRequirement,
+}: {
+  snapshot: SetupSnapshot | null;
+  tools: Tool[];
+  busyId: string | null;
+  progress: SetupProgress | null;
+  onChooseRoot: () => void;
+  onRefresh: () => void;
+  onManage: (id: string, action: SetupAction) => void;
+  onInstallSelected: (ids: string[]) => void;
+  onInstallRequirement: (id: string) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const missingTools =
+    snapshot?.tools.filter((tool) => !tool.installed || !tool.configured).map((tool) => tool.id) ??
+    [];
+
+  useEffect(() => {
+    setSelected((current) => {
+      const stillMissing = current.filter((id) => missingTools.includes(id));
+      const newMissing = missingTools.filter((id) => !current.includes(id));
+      return [...stillMissing, ...newMissing];
+    });
+    // Keep the initial selection aligned with newly detected tools.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingTools.join("|")]);
+
+  if (!snapshot) {
+    return (
+      <div className="page setup-page">
+        <div className="setup-loading">
+          <LoaderCircle className="spin" size={22} />
+          Checking this computer…
+        </div>
+      </div>
+    );
+  }
+
+  const readyCount = snapshot.tools.filter((tool) => tool.installed && tool.configured).length;
+  const requirementsReady = snapshot.requirements.filter((item) => item.available).length;
+  const allReady =
+    readyCount === snapshot.tools.length &&
+    requirementsReady === snapshot.requirements.length;
+
+  return (
+    <div className="page setup-page">
+      <section className={`setup-hero ${allReady ? "ready" : ""}`}>
+        <div className="setup-hero-icon">
+          {allReady ? <ShieldCheck size={28} /> : <Wrench size={28} />}
+        </div>
+        <div>
+          <span className="eyebrow">{allReady ? "Everything ready" : "First-time setup"}</span>
+          <h2>{allReady ? "Your LTW studio is ready." : "Set up this computer for LTW."}</h2>
+          <p>
+            Hub installs each tool into one managed folder. Personal media, downloaded models,
+            voices, and projects stay outside the Hub repository.
+          </p>
+        </div>
+        <div className="setup-score">
+          <strong>{readyCount}/{snapshot.tools.length}</strong>
+          <span>tools ready</span>
+        </div>
+      </section>
+
+      <section className="setup-location content-card">
+        <div className="settings-icon"><FolderOpen size={20} /></div>
+        <div className="settings-copy">
+          <h3>Installation folder</h3>
+          <p>All selected LTW tools will be installed inside this folder.</p>
+          <code>{snapshot.root}</code>
+        </div>
+        <button className="secondary-button" onClick={onChooseRoot} disabled={Boolean(busyId)}>
+          Change folder
+        </button>
+      </section>
+
+      <div className="setup-section-heading">
+        <div>
+          <span className="eyebrow">Step 1</span>
+          <h2>Computer requirements</h2>
+        </div>
+        <span className="setup-count">{requirementsReady}/{snapshot.requirements.length} ready</span>
+      </div>
+      <div className="requirements-grid">
+        {snapshot.requirements.map((requirement) => {
+          const isBusy = busyId === `requirement:${requirement.id}`;
+          return (
+            <article className={`requirement-card ${requirement.available ? "ready" : "missing"}`} key={requirement.id}>
+              <span className="requirement-status">
+                {requirement.available ? <Check size={15} /> : <AlertTriangle size={15} />}
+              </span>
+              <div>
+                <h3>{requirement.name}</h3>
+                <p>
+                  {requirement.available
+                    ? requirement.version
+                    : requirement.requiredBy.join(", ")}
+                </p>
+                {!requirement.available && <small>{requirement.installHint}</small>}
+              </div>
+              {!requirement.available && requirement.canInstall && (
+                <button
+                  className="mini-button"
+                  disabled={Boolean(busyId)}
+                  onClick={() => onInstallRequirement(requirement.id)}
+                >
+                  {isBusy ? <LoaderCircle className="spin" size={14} /> : <Download size={14} />}
+                  Install
+                </button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="setup-section-heading tools-heading">
+        <div>
+          <span className="eyebrow">Step 2</span>
+          <h2>Choose your LTW tools</h2>
+        </div>
+        <div className="setup-heading-actions">
+          <button className="secondary-button" onClick={onRefresh} disabled={Boolean(busyId)}>
+            <RefreshCw size={15} />
+            Check again
+          </button>
+          {missingTools.length > 0 && (
+            <button
+              className="primary-button"
+              disabled={Boolean(busyId) || selected.length === 0}
+              onClick={() => onInstallSelected(selected)}
+            >
+              {busyId ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
+              Install selected ({selected.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="setup-tool-list">
+        {snapshot.tools.map((setupTool) => {
+          const tool = tools.find((candidate) => candidate.id === setupTool.id);
+          if (!tool) return null;
+          const ready = setupTool.installed && setupTool.configured;
+          const isBusy = busyId === setupTool.id;
+          const toolProgress = isBusy && progress?.toolId === setupTool.id ? progress : null;
+          const checked = selected.includes(setupTool.id);
+          return (
+            <article className={`setup-tool-row ${ready ? "ready" : ""}`} key={setupTool.id}>
+              {!ready ? (
+                <label className="setup-check">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={Boolean(busyId)}
+                    onChange={() =>
+                      setSelected((current) =>
+                        current.includes(setupTool.id)
+                          ? current.filter((id) => id !== setupTool.id)
+                          : [...current, setupTool.id],
+                      )
+                    }
+                  />
+                  <span />
+                </label>
+              ) : (
+                <span className="setup-ready-check"><Check size={15} /></span>
+              )}
+              <span className="tool-logo" style={{ background: `${tool.color}18`, color: tool.color }}>
+                {tool.shortName}
+              </span>
+              <div className="setup-tool-copy">
+                <div>
+                  <h3>{tool.name}</h3>
+                  <span className={`status-pill ${ready ? "installed" : ""}`}>
+                    {ready ? "Ready" : setupTool.installed ? "Needs setup" : "Not installed"}
+                  </span>
+                  {setupTool.hasLocalChanges && (
+                    <span className="status-pill warning">Local code changes</span>
+                  )}
+                </div>
+                <p>{tool.description}</p>
+                <code>{setupTool.path}</code>
+                {toolProgress && (
+                  <div className="setup-progress">
+                    <div>
+                      <span>{toolProgress.message}</span>
+                      <strong>{toolProgress.percent}%</strong>
+                    </div>
+                    <div className="progress-track">
+                      <span style={{ width: `${toolProgress.percent}%` }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="setup-row-actions">
+                {!ready ? (
+                  <button
+                    className="primary-button"
+                    disabled={Boolean(busyId)}
+                    onClick={() => onManage(setupTool.id, "install")}
+                  >
+                    {isBusy ? <LoaderCircle className="spin" size={15} /> : <Download size={15} />}
+                    {setupTool.installed ? "Finish setup" : "Install"}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="secondary-button"
+                      disabled={Boolean(busyId) || setupTool.hasLocalChanges}
+                      onClick={() => onManage(setupTool.id, "update")}
+                    >
+                      <RefreshCw size={14} />
+                      Update
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={Boolean(busyId)}
+                      onClick={() => onManage(setupTool.id, "repair")}
+                    >
+                      <RotateCcw size={14} />
+                      Repair
+                    </button>
+                  </>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="setup-footnote">
+        <ShieldCheck size={17} />
+        <span>
+          Install actions use fixed public GitHub repositories and isolated dependency folders.
+          Updates stop if a tool has local code changes.
+        </span>
+      </div>
+    </div>
   );
 }
 

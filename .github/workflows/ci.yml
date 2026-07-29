@@ -1,0 +1,60 @@
+name: Verify LTW Hub
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Test interface
+        run: npm test
+
+      - name: Build interface
+        run: npm run build:web
+
+      - name: Test native setup manager
+        if: runner.os != 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Compile Windows native tests
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-run
+
+      - name: Check native code
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run tauri -- build --bundles nsis

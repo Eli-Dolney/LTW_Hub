@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::{
     env,
+    ffi::OsString,
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -39,14 +40,26 @@ struct ToolConfig {
     use_cached_models_offline: bool,
 }
 
-const DOWNLOADER_MAC: &[CommandSpec] = &[CommandSpec {
-    program: "bash",
-    args: &["run.sh"],
-}];
-const DOWNLOADER_WINDOWS: &[CommandSpec] = &[CommandSpec {
-    program: "cmd.exe",
-    args: &["/c", "run.bat"],
-}];
+const DOWNLOADER_MAC: &[CommandSpec] = &[
+    CommandSpec {
+        program: "bash",
+        args: &["run.sh"],
+    },
+    CommandSpec {
+        program: ".venv/bin/python",
+        args: &["downloader.py"],
+    },
+];
+const DOWNLOADER_WINDOWS: &[CommandSpec] = &[
+    CommandSpec {
+        program: "cmd.exe",
+        args: &["/c", "run.bat"],
+    },
+    CommandSpec {
+        program: ".venv\\Scripts\\python.exe",
+        args: &["downloader.py"],
+    },
+];
 
 const CLIPPER_MAC: &[CommandSpec] = &[
     CommandSpec {
@@ -64,14 +77,20 @@ const CLIPPER_WINDOWS: &[CommandSpec] = &[
         args: &["/c", "LTW_Video_Splitter.bat"],
     },
     CommandSpec {
-        program: "python",
+        program: "venv\\Scripts\\python.exe",
         args: &["launch_gui.py"],
     },
 ];
-const CLIPPER_LINUX: &[CommandSpec] = &[CommandSpec {
-    program: "python3",
-    args: &["launch_gui.py"],
-}];
+const CLIPPER_LINUX: &[CommandSpec] = &[
+    CommandSpec {
+        program: "venv/bin/python",
+        args: &["launch_gui.py"],
+    },
+    CommandSpec {
+        program: "python3",
+        args: &["launch_gui.py"],
+    },
+];
 
 const AUDIO_MAC: &[CommandSpec] = &[
     CommandSpec {
@@ -79,7 +98,7 @@ const AUDIO_MAC: &[CommandSpec] = &[
         args: &["quick_start.sh"],
     },
     CommandSpec {
-        program: "python3",
+        program: "venv/bin/python",
         args: &["-m", "streamlit", "run", "app.py"],
     },
 ];
@@ -89,7 +108,7 @@ const AUDIO_WINDOWS: &[CommandSpec] = &[
         args: &["/c", "quick_start.bat"],
     },
     CommandSpec {
-        program: "python",
+        program: "venv\\Scripts\\python.exe",
         args: &["-m", "streamlit", "run", "app.py"],
     },
 ];
@@ -109,13 +128,13 @@ const TTS_MAC: &[CommandSpec] = &[
         args: &["scripts/start_ui.sh"],
     },
     CommandSpec {
-        program: "python3",
-        args: &["-m", "streamlit", "run", "app.py"],
+        program: ".venv/bin/python",
+        args: &["gradio_production_ui.py"],
     },
 ];
 const TTS_WINDOWS: &[CommandSpec] = &[CommandSpec {
-    program: "python",
-    args: &["-m", "streamlit", "run", "app.py"],
+    program: ".venv\\Scripts\\python.exe",
+    args: &["gradio_production_ui.py"],
 }];
 
 fn tool_config(id: &str) -> Option<ToolConfig> {
@@ -176,6 +195,31 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+fn executable_path() -> OsString {
+    let mut paths: Vec<PathBuf> = env::var_os("PATH")
+        .as_deref()
+        .map(env::split_paths)
+        .into_iter()
+        .flatten()
+        .collect();
+    if env::consts::OS == "macos" {
+        for path in [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/usr/bin",
+            "/bin",
+        ] {
+            let candidate = PathBuf::from(path);
+            if !paths.contains(&candidate) {
+                paths.insert(0, candidate);
+            }
+        }
+    }
+    env::join_paths(paths).unwrap_or_else(|_| OsString::from("/usr/bin:/bin"))
+}
+
 fn candidate_roots(tools_root: Option<&str>) -> Vec<PathBuf> {
     if let Some(root) = tools_root.filter(|root| !root.trim().is_empty()) {
         return vec![PathBuf::from(root)];
@@ -185,6 +229,7 @@ fn candidate_roots(tools_root: Option<&str>) -> Vec<PathBuf> {
     vec![
         home.join("Desktop/Projects"),
         home.join("Desktop/Python Scripts"),
+        home.join("Documents/LTW Tools"),
         home.join("Documents/GitHub"),
         home.join("GitHub"),
         home.join("Developer"),
@@ -206,6 +251,10 @@ fn resolve_tool_path(config: &ToolConfig, tools_root: Option<&str>) -> PathBuf {
     roots[0].join(config.folders[0])
 }
 
+pub(crate) fn tool_path_for_id(id: &str, tools_root: Option<&str>) -> Option<PathBuf> {
+    tool_config(id).map(|config| resolve_tool_path(&config, tools_root))
+}
+
 fn command_candidates(config: &ToolConfig) -> &'static [CommandSpec] {
     match env::consts::OS {
         "macos" => config.macos,
@@ -216,6 +265,11 @@ fn command_candidates(config: &ToolConfig) -> &'static [CommandSpec] {
 
 fn resolve_command(config: &ToolConfig, cwd: &Path) -> Option<CommandSpec> {
     command_candidates(config).iter().find_map(|candidate| {
+        let program_is_relative_path =
+            candidate.program.contains('/') || candidate.program.contains('\\');
+        if program_is_relative_path && !cwd.join(candidate.program).exists() {
+            return None;
+        }
         let launcher = candidate.args.iter().find(|argument| {
             [".sh", ".command", ".bat", ".py"]
                 .iter()
@@ -236,8 +290,8 @@ fn open_external(target: &str) {
             args: &[],
         },
         "windows" => CommandSpec {
-            program: "cmd.exe",
-            args: &["/c", "start", ""],
+            program: "explorer.exe",
+            args: &[],
         },
         _ => CommandSpec {
             program: "xdg-open",
@@ -248,6 +302,7 @@ fn open_external(target: &str) {
     let _ = Command::new(command.program)
         .args(command.args)
         .arg(target)
+        .env("PATH", executable_path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -318,6 +373,7 @@ pub fn launch_tool(
     process
         .args(command.args)
         .current_dir(&cwd)
+        .env("PATH", executable_path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

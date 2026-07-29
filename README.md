@@ -4,6 +4,15 @@
 
 Everything is designed to stay on your machine. Hub does not upload media, require an account, or enable cloud sync.
 
+## Download
+
+Open the [latest release](https://github.com/Eli-Dolney/LTW_Hub/releases/latest) and download the installer for your computer:
+
+- **macOS:** download the `.dmg`, drag LTW Hub into Applications, then right-click it and choose **Open** the first time.
+- **Windows:** download the `.exe` installer. If Windows SmartScreen appears, choose **More info → Run anyway**.
+
+The early builds are not code-signed yet, which is why the operating system may show that warning.
+
 ## What is included
 
 This repository contains only the LTW Hub source code and app artwork. It does **not** contain anyone's media, projects, model downloads, credentials, environment files, or private folders.
@@ -31,13 +40,32 @@ Clone the tools into one parent folder, then choose that parent folder in **Sett
   - LTW EzEdit
   - LTW Voice / TTS
 - Automatic browser opening when the TTS Gradio UI is ready on port 7861
+- First-run Setup Manager with selectable tool installation
+- Checks for Git, Python 3.12+, Node.js, and FFmpeg
+- Safe one-click requirement installation through Homebrew or Windows Package Manager
+- One-click tool updates and dependency repair
+- Visible setup progress and actionable errors
+- Protection against overwriting locally modified tool repositories
 - Dedicated writable Numba cache and offline reuse of downloaded Chatterbox models
 - Local project and preference persistence
 - Queue and tool-management views
 - Small native Tauri backend with allowlisted commands
 - Approximately 11 MB packaged macOS application
 
-## Run LTW Hub
+## Use the Setup Manager
+
+1. Open **Setup** in the sidebar.
+2. Install any missing computer requirements.
+3. Choose the LTW tools you want.
+4. Select **Install selected**.
+5. Leave Hub open while large AI and audio packages download.
+6. Launch ready tools from **Tools** or the Home screen.
+
+By default, new tools are installed under `~/Documents/LTW Tools`. You can choose another parent folder before installing. Every Python tool gets its own isolated environment, and EzEdit gets its own Node packages.
+
+**Update** downloads the newest public code and refreshes dependencies. It stops safely if a repository contains local code changes. **Repair** refreshes dependencies without deleting the repository, projects, media, voices, or models.
+
+## Build LTW Hub from source
 
 Requirements:
 
@@ -83,6 +111,7 @@ Without configuration, Hub checks these parent folders:
 ```text
 ~/Desktop/Projects
 ~/Desktop/Python Scripts
+~/Documents/LTW Tools
 ~/Documents/GitHub
 ~/GitHub
 ~/Developer
@@ -103,6 +132,20 @@ Hub recognizes the public repository names as well as these legacy folder names:
 You can choose a different parent folder under **Settings → Tools folder**.
 
 Hub stores preferences and its sample project state in the operating system's local app storage. That data is created separately for each person and is never committed to this repository.
+
+## Privacy and safety
+
+- Hub clones only the five fixed public LTW repository URLs listed above.
+- Setup commands use argument lists rather than pasted shell commands.
+- Python packages are isolated per tool.
+- Hub never deletes an existing tool folder during install, update, or repair.
+- Updates refuse to run over local tracked-code changes.
+- Media, voices, models, exports, cookies, and projects are excluded from this repository.
+- Tool processes and their outputs remain on the user's computer.
+
+## Releases
+
+GitHub Actions verifies the React and Rust code on macOS and Windows. Version tags build public `.dmg` and `.exe` downloads automatically. Code signing and automatic Hub self-updates can be added after signing certificates are available.
 
 ## Current architecture
 
@@ -130,7 +173,7 @@ The interface is React + TypeScript + Vite. Tauri uses the operating system's na
 3. Connect Downloader output directly to Clipper projects.
 4. Stream job progress and logs into Hub.
 5. Add workflow presets and reusable channel branding.
-6. Package signed macOS and Windows installers.
+6. Add signed releases and automatic Hub self-updates.
 
 ## License
 
