@@ -42,10 +42,19 @@ jobs:
         run: npm run build:web
 
       - name: Test native setup manager
+        if: runner.os != 'Windows'
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Compile Windows native tests
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-run
 
       - name: Check native code
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Check formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run tauri -- build --bundles nsis
