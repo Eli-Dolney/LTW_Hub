@@ -20,7 +20,8 @@ Everything is designed to stay on your machine. Hub does not upload media, requi
 - Dedicated writable Numba cache and offline reuse of downloaded Chatterbox models
 - Local project and preference persistence
 - Queue and tool-management views
-- Secure Electron bridge with context isolation and restricted navigation
+- Small native Tauri backend with allowlisted commands
+- Approximately 11 MB packaged macOS application
 
 ## Run LTW Hub
 
@@ -28,6 +29,8 @@ Requirements:
 
 - Node.js 20 or newer
 - npm
+- Rust 1.77.2 or newer
+- Xcode Command Line Tools on macOS
 
 ```bash
 npm install
@@ -40,16 +43,23 @@ For browser-only interface development:
 npm run dev:web
 ```
 
-Create a production web bundle:
+Create a production desktop application:
 
 ```bash
 npm run build
 ```
 
-Run checks:
+The macOS application is written to:
+
+```text
+src-tauri/target/release/bundle/macos/LTW Hub.app
+```
+
+Run frontend and native checks:
 
 ```bash
 npm test
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Tool discovery
@@ -82,18 +92,20 @@ You can choose a different parent folder under **Settings → Tools folder**.
 
 ```text
 LTW_Hub/
-├── electron/
-│   ├── main.cjs       # Desktop window, discovery, launch, and file IPC
-│   └── preload.cjs    # Narrow renderer bridge
+├── src-tauri/
+│   ├── src/tools.rs   # Discovery, launch, local model, and URL behavior
+│   ├── src/lib.rs     # Tauri application setup and command registration
+│   └── tauri.conf.json
 ├── src/
 │   ├── App.tsx        # Main product interface and views
+│   ├── platform.ts    # Typed frontend-to-Tauri bridge
 │   ├── data.ts        # Tool catalog and starter project data
 │   ├── styles.css     # LTW design system
 │   └── types.ts       # Shared application models
 └── vite.config.ts
 ```
 
-The interface is React + TypeScript + Vite. Desktop capabilities use Electron with context isolation, sandboxing, no renderer Node access, and allowlisted tool commands.
+The interface is React + TypeScript + Vite. Tauri uses the operating system's native webview, while a small Rust backend handles only allowlisted tool discovery, launching, file opening, and TTS readiness.
 
 ## Next milestones
 

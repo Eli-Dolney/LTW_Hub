@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { INITIAL_TOOLS, SEED_PROJECTS, SEED_QUEUE } from "./data";
 import { useLocalStorage } from "./hooks/useLocalStorage";
+import { desktopApi } from "./platform";
 import type { Project, Tool, View } from "./types";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
@@ -63,8 +64,8 @@ function App() {
   const [search, setSearch] = useState("");
 
   const detectTools = async () => {
-    if (!window.ltwHub) return;
-    const detected = await window.ltwHub.detectTools(toolsRoot || undefined);
+    if (!desktopApi.isAvailable) return;
+    const detected = await desktopApi.detectTools(toolsRoot || undefined);
     setTools((current) =>
       current.map((tool) => {
         const match = detected.find((item) => item.id === tool.id);
@@ -75,7 +76,7 @@ function App() {
 
   useEffect(() => {
     detectTools();
-    // Electron tool availability is refreshed when the root changes.
+    // Desktop tool availability is refreshed when the root changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolsRoot]);
 
@@ -86,20 +87,16 @@ function App() {
   }, [toast]);
 
   const launchTool = async (tool: Tool) => {
-    if (!window.ltwHub) {
-      setToast("Desktop launching is available inside the LTW Hub app.");
-      return;
-    }
-    const result = await window.ltwHub.launchTool(tool.id, toolsRoot || undefined);
+    const result = await desktopApi.launchTool(tool.id, toolsRoot || undefined);
     setToast(result.message);
   };
 
   const chooseToolsRoot = async () => {
-    if (!window.ltwHub) {
+    if (!desktopApi.isAvailable) {
       setToast("Folder selection is available in the desktop app.");
       return;
     }
-    const selected = await window.ltwHub.chooseToolsRoot();
+    const selected = await desktopApi.chooseToolsRoot();
     if (selected) setToolsRoot(selected);
   };
 
@@ -522,7 +519,7 @@ function ToolsView({
             <h3>{tool.name}</h3>
             <p>{tool.description}</p>
             <div className="tool-card-actions">
-              <button className="primary-button" onClick={() => onLaunch(tool)} disabled={!tool.installed && !!window.ltwHub}>
+              <button className="primary-button" onClick={() => onLaunch(tool)} disabled={!tool.installed && desktopApi.isAvailable}>
                 <Play size={16} fill="currentColor" /> Launch
               </button>
               <button className="icon-button" aria-label={`Configure ${tool.name}`}><Settings size={16} /></button>
