@@ -1,3 +1,4 @@
+mod setup;
 mod tools;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -5,6 +6,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            setup::setup_snapshot,
+            setup::manage_tool,
+            setup::install_requirement,
             tools::detect_tools,
             tools::launch_tool,
             tools::open_path,

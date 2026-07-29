@@ -1,4 +1,4 @@
-export type View = "dashboard" | "projects" | "tools" | "queue" | "settings";
+export type View = "dashboard" | "setup" | "projects" | "tools" | "queue" | "settings";
 
 export interface Project {
   id: string;
